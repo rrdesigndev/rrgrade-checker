@@ -1,0 +1,67 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RR Grade – AI Checker</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script><script src="config.js"></script>
+<style>
+body{font:14px system-ui,sans-serif;margin:0;background:#f4f5f7;color:#1c2330}main{max-width:1100px;margin:auto;padding:16px}
+.card{background:#fff;border-radius:10px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px #0002}h2{margin:0 0 10px;font-size:16px}
+input,select,button{font:inherit;padding:7px 10px;border:1px solid #bbc;border-radius:6px}button{background:#1f4e9c;color:#fff;border:0;cursor:pointer}button.s{background:#e8ecf4;color:#1c2330}button:disabled{opacity:.5}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}.qs input{width:70px}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border:1px solid #dde;padding:5px 7px;text-align:left}th{background:#eef1f7}
+.wrap{overflow-x:auto}.low{background:#fff1f0}#modal{position:fixed;inset:0;background:#000b;overflow:auto;padding:16px}#modal img{max-width:100%;display:block;margin:0 auto 12px}[hidden]{display:none!important}
+</style></head><body><main>
+<div id="login" class="card" hidden><h2>RR Grade – AI Checker (Admin)</h2><div class="row"><input id="em" placeholder="Email"><input id="pw" type="password" placeholder="Password"><button id="li">Login</button></div></div>
+<div id="app" hidden>
+<div class="card"><h2>1. Activity</h2><div class="row"><select id="act"></select><button class="s" id="lo">Logout</button></div></div>
+<div class="card"><h2>2. Exam setup (answer key + points)</h2>
+<div class="row"><input id="subj" placeholder="Subject (e.g. Thermodynamics)"><label>No. of questions <input id="nq" type="number" min="1" max="50" value="5" style="width:70px"></label></div>
+<div class="row qs" id="qs"></div>
+<div class="row"><label>Answer key photos (professor's correct answers): <input id="kf" type="file" accept="image/*" multiple></label></div>
+<div class="row"><button id="sv">Save exam</button><span id="exinfo"></span></div></div>
+<div class="card"><h2>3. Grade &amp; results</h2>
+<div class="row"><button id="go">Grade all ungraded</button><button class="s" id="re">Re-grade all</button><button class="s" id="ex">Export CSV</button><span id="st"></span></div>
+<div class="wrap"><table id="tb"></table></div></div></div>
+<div id="modal" hidden></div></main>
+<script>
+const db=supabase.createClient(CFG.url,CFG.key),$=i=>document.getElementById(i),B=db.storage.from('uploads');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+let EX=null,SUBS=[],GR={},busy=false;
+const squeeze=f=>new Promise((ok,no)=>{const i=new Image();i.onload=()=>{const s=Math.min(1,1600/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=i.width*s;c.height=i.height*s;c.getContext('2d').drawImage(i,0,0,c.width,c.height);c.toBlob(ok,'image/jpeg',.8)};i.onerror=no;i.src=URL.createObjectURL(f)});
+async function init(){const{data:{session}}=await db.auth.getSession();$('login').hidden=!!session;$('app').hidden=!session;if(!session)return;
+ const{data}=await db.from('activities').select('id,title,section,created_at').order('created_at',{ascending:false});
+ $('act').innerHTML=(data||[]).map(a=>`<option value="${a.id}">${esc(a.title)}${a.section?' – '+esc(a.section):''}</option>`).join('');drawQs();loadAct()}
+$('li').onclick=async()=>{const{error}=await db.auth.signInWithPassword({email:$('em').value,password:$('pw').value});error?alert('Incorrect email or password.'):init()};
+$('lo').onclick=async()=>{await db.auth.signOut();init()};
+function drawQs(){const n=+$('nq').value||1,old=(EX?EX.questions:[]);$('qs').innerHTML=Array.from({length:n},(_,i)=>`<label>Q${i+1} max <input data-q="${i+1}" type="number" min="0" step="0.5" value="${old[i]?.max??5}"></label>`).join('')}
+$('nq').onchange=drawQs;
+async function loadAct(){const id=$('act').value;if(!id)return;
+ const{data:e}=await db.from('exams').select('*').eq('activity_id',id).order('created_at',{ascending:false}).limit(1);EX=e&&e[0]||null;
+ if(EX){$('subj').value=EX.subject;$('nq').value=EX.questions.length;drawQs();$('exinfo').textContent=`Saved: ${EX.questions.length} questions, ${EX.questions.reduce((a,q)=>a+q.max,0)} pts, ${EX.key_files.length} key photo(s)`}else{$('exinfo').textContent='No exam saved yet.'}
+ await loadRows()}
+$('act').onchange=loadAct;
+$('sv').onclick=async()=>{const id=$('act').value;if(!id)return;const qs=[...$('qs').querySelectorAll('input')].map(i=>({n:+i.dataset.q,max:+i.value||0}));
+ let files=EX?EX.key_files:[];const fl=[...$('kf').files];if(!files.length&&!fl.length)return alert('Upload the answer key photo(s).');
+ $('sv').disabled=true;try{if(fl.length){files=[];for(const f of fl){const p=`keys/${id}/${Date.now()}_${files.length}.jpg`;const{error}=await B.upload(p,await squeeze(f),{contentType:'image/jpeg'});if(error)throw error;files.push(p)}}
+ const row={activity_id:id,subject:$('subj').value.trim(),questions:qs,key_files:files};
+ const{data,error}=EX?await db.from('exams').update(row).eq('id',EX.id).select().single():await db.from('exams').insert(row).select().single();if(error)throw error;EX=data;$('kf').value='';
+ $('exinfo').textContent='Saved.';await loadRows()}catch(e){alert('Error: '+(e.message||e))}$('sv').disabled=false};
+async function loadRows(){const id=$('act').value;const{data:s}=await db.from('submissions').select('id,student_name,section,files,created_at').eq('activity_id',id);SUBS=(s||[]).sort((a,b)=>(a.section||'').localeCompare(b.section||'')||a.student_name.localeCompare(b.student_name));
+ GR={};if(EX){const{data:g}=await db.from('grades').select('*').eq('exam_id',EX.id);(g||[]).forEach(x=>GR[x.submission_id]=x)}render()}
+function render(){const Q=EX?EX.questions:[],max=Q.reduce((a,q)=>a+q.max,0);
+ $('tb').innerHTML=`<tr><th>#</th><th>Name</th><th>Year &amp; Section</th>${Q.map(q=>`<th>Q${q.n}<br><small>/${q.max}</small></th>`).join('')}<th>Total<br><small>/${max}</small></th><th>Conf.</th><th>Notes</th><th></th></tr>`+
+ SUBS.map((s,i)=>{const g=GR[s.id];return`<tr class="${g&&g.confidence==='low'?'low':''}"><td>${i+1}</td><td>${esc(s.student_name)}</td><td>${esc(s.section)}</td>${Q.map(q=>`<td>${g?g.scores[q.n]:''}</td>`).join('')}<td><b>${g?g.total:'–'}</b></td><td>${g?esc(g.confidence):''}</td><td>${g?esc(g.notes):''}</td><td><button class="s" onclick="view('${s.id}')">Photos</button>${g&&g.confidence!=='high'?` <button class="s" onclick="run(['${s.id}'],true)">Re-check</button>`:''}</td></tr>`}).join('')}
+window.view=async id=>{const s=SUBS.find(x=>x.id===id);const{data}=await B.createSignedUrls(s.files,3600);const m=$('modal');m.innerHTML=`<button onclick="this.parentNode.hidden=true">Close</button><p style="color:#fff">${esc(s.student_name)}</p>`+(data||[]).map(d=>`<img src="${d.signedUrl}">`).join('');m.hidden=false};
+async function run(ids,strong){if(busy)return;if(!EX)return alert('Save the exam first.');busy=true;let done=0;
+ for(const id of ids){let ok=false;for(let t=0;t<3&&!ok;t++){$('st').textContent=`Grading ${done+1}/${ids.length}…${t?' (waiting for rate limit)':''}`;
+  const{data,error}=await db.functions.invoke('grade',{body:{submission_id:id,exam_id:EX.id,strong:!!strong}});
+  if(!error&&data&&data.ok){GR[id]=data;ok=true}else if(error&&error.context&&error.context.status===429){await sleep(65000)}else{let m=error?error.message:'';try{m=(await error.context.json()).error||m}catch(_){}alert('Error: '+m);busy=false;render();return}}
+  if(!ok){$('st').textContent=`Stopped at ${done}/${ids.length}: rate/daily limit. Try again after reset (3 PM PH time).`;busy=false;render();return}
+  done++;render();await sleep(strong?13000:4500)}
+ $('st').textContent=`Done: ${done} graded.`;busy=false}
+window.run=run;
+$('go').onclick=()=>run(SUBS.filter(s=>!GR[s.id]).map(s=>s.id));
+$('re').onclick=()=>{if(confirm('Re-grade everyone?'))run(SUBS.map(s=>s.id))};
+$('ex').onclick=()=>{if(!EX)return;const Q=EX.questions,q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+ const rows=[['Student Name','Year & Section','Subject',...Q.map(x=>'Q'+x.n+' (/'+x.max+')'),'Total (/'+Q.reduce((a,x)=>a+x.max,0)+')','Confidence','Notes']];
+ SUBS.forEach(s=>{const g=GR[s.id];rows.push([s.student_name,s.section,EX.subject,...Q.map(x=>g?g.scores[x.n]:''),g?g.total:'',g?g.confidence:'',g?g.notes:''])});
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(q).join(',')).join('\r\n')],{type:'text/csv'}));a.download='grades.csv';a.click()};
+init();
+</script></body></html>
