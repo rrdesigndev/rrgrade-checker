@@ -1,24 +1,20 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RR Grade – AI Checker</title><link rel="icon" type="image/svg+xml" href="favicon.svg">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RR Grade – AI Checker</title><link rel="icon" type="image/svg+xml" href="favicon.svg"><meta name="theme-color" content="#102a43"><link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script><script src="config.js"></script>
-<style>
-body{font:14px system-ui,sans-serif;margin:0;background:#f4f5f7;color:#1c2330}main{max-width:1100px;margin:auto;padding:16px}
-.card{background:#fff;border-radius:10px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px #0002}h2{margin:0 0 10px;font-size:16px}
-input,select,button{font:inherit;padding:7px 10px;border:1px solid #bbc;border-radius:6px}button{background:#1f4e9c;color:#fff;border:0;cursor:pointer}button.s{background:#e8ecf4;color:#1c2330}button:disabled{opacity:.5}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}.qs input{width:70px}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border:1px solid #dde;padding:5px 7px;text-align:left}th{background:#eef1f7}
-.wrap{overflow-x:auto}.low{background:#fff1f0}#modal{position:fixed;inset:0;background:#000b;overflow:auto;padding:16px}#modal img{max-width:100%;display:block;margin:0 auto 12px}[hidden]{display:none!important}
-</style></head><body><main>
-<div id="login" class="card" hidden><h2>RR Grade – AI Checker (Admin)</h2><div class="row"><input id="em" placeholder="Email"><input id="pw" type="password" placeholder="Password"><button id="li">Login</button></div></div>
-<div id="app" hidden>
-<div class="card"><h2>1. Activity</h2><div class="row"><select id="act"></select><button class="s" id="lo">Logout</button></div></div>
-<div class="card"><h2>2. Exam setup (answer key + points)</h2>
-<div class="row"><input id="subj" placeholder="Subject (e.g. Thermodynamics)"><label>No. of questions <input id="nq" type="number" min="1" max="50" value="5" style="width:70px"></label></div>
-<div class="row qs" id="qs"></div>
-<div class="row"><label>Answer key photos (professor's correct answers): <input id="kf" type="file" accept="image/*" multiple></label></div>
-<div class="row"><button id="sv">Save exam</button><span id="exinfo"></span></div></div>
-<div class="card"><h2>3. Grade &amp; results</h2>
-<div class="row"><button id="go">Grade all ungraded</button><button class="s" id="re">Re-grade all</button><button class="s" id="ex">Export CSV</button><span id="st"></span></div>
+<style>#qs{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin:8px 0 14px}#qs label{margin:0}#qs input{margin:5px 0 0}td.n{white-space:normal;min-width:170px}#modal:not([hidden]){display:block;overflow:auto}[hidden]{display:none!important}</style></head>
+<body><main>
+<div id="login" class="card login-card" hidden><div class="brand"><span class="brand-mark">R</span><div><strong>RR Grade</strong><small>AI Checker</small></div></div><p class="eyebrow">ADMINISTRATOR ACCESS</p><h1>Welcome back</h1><p class="mute">Sign in to grade student submissions.</p><input id="em" type="email" placeholder="Email"><input id="pw" type="password" placeholder="Password"><button class="p" id="li">Sign In</button></div>
+<div id="app" hidden><header class="topbar"><div class="brand"><span class="brand-mark">R</span><div><strong>RR Grade</strong><small>AI Checker</small></div></div><span class="topbar-caption">Instructor workspace</span></header>
+<section class="welcome-row"><div><p class="eyebrow">DASHBOARD</p><h1>AI Checker</h1><p class="mute">Set the answer key, grade submissions with AI, and export the scores.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="logout-btn" onclick="location.href='https://rrdesigndev.github.io/rrgrade/admin.html'">← &nbsp;Dashboard</button><button id="lo" class="logout-btn">↪ &nbsp;Log Out</button></div></section>
+<div class="card"><div class="section-heading"><div><p class="eyebrow">SELECT</p><h2>Activity</h2></div><span class="step-chip">01 / ACTIVITY</span></div><select id="act"></select></div>
+<div class="card"><div class="section-heading"><div><p class="eyebrow">ANSWER KEY</p><h2>Exam Setup</h2></div><span class="step-chip">02 / SETUP</span></div>
+<div class="row" style="align-items:flex-start"><div style="flex:2;min-width:220px"><label>Subject<input id="subj" placeholder="e.g. Thermodynamics"></label></div><div style="flex:1;min-width:150px"><label>Number of questions<input id="nq" type="number" min="1" max="50" value="5"></label></div></div>
+<p class="mute" style="margin-top:4px">Maximum points per question</p><div id="qs"></div>
+<label>Answer key photos (professor's correct answers)<input id="kf" type="file" accept="image/*" multiple></label>
+<div class="row"><button class="p" id="sv">Save exam</button><span class="mute" id="exinfo"></span></div></div>
+<div class="card"><div class="section-heading"><div><p class="eyebrow">RESULTS</p><h2>Grade &amp; Export</h2></div><span class="step-chip">03 / GRADING</span></div>
+<div class="row" style="margin-bottom:14px"><button class="p" id="go">Grade all ungraded</button><button id="re">Re-grade all</button><button id="ex">Export CSV</button><span class="mute" id="st"></span></div>
 <div class="wrap"><table id="tb"></table></div></div></div>
-<div id="modal" hidden></div></main>
+<div id="modal" class="modal-backdrop" hidden></div></main>
 <script>
 const db=supabase.createClient(CFG.url,CFG.key),$=i=>document.getElementById(i),B=db.storage.from('uploads');
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -47,8 +43,8 @@ async function loadRows(){const id=$('act').value;const{data:s}=await db.from('s
  GR={};if(EX){const{data:g}=await db.from('grades').select('*').eq('exam_id',EX.id);(g||[]).forEach(x=>GR[x.submission_id]=x)}render()}
 function render(){const Q=EX?EX.questions:[],max=Q.reduce((a,q)=>a+q.max,0);
  $('tb').innerHTML=`<tr><th>#</th><th>Name</th><th>Year &amp; Section</th>${Q.map(q=>`<th>Q${q.n}<br><small>/${q.max}</small></th>`).join('')}<th>Total<br><small>/${max}</small></th><th>Conf.</th><th>Notes</th><th></th></tr>`+
- SUBS.map((s,i)=>{const g=GR[s.id];return`<tr class="${g&&g.confidence==='low'?'low':''}"><td>${i+1}</td><td>${esc(s.student_name)}</td><td>${esc(s.section)}</td>${Q.map(q=>`<td>${g?g.scores[q.n]:''}</td>`).join('')}<td><b>${g?g.total:'–'}</b></td><td>${g?esc(g.confidence):''}</td><td>${g?esc(g.notes):''}</td><td><button class="s" onclick="view('${s.id}')">Photos</button>${g&&g.confidence!=='high'?` <button class="s" onclick="run(['${s.id}'],true)">Re-check</button>`:''}</td></tr>`}).join('')}
-window.view=async id=>{const s=SUBS.find(x=>x.id===id);const{data}=await B.createSignedUrls(s.files,3600);const m=$('modal');m.innerHTML=`<button onclick="this.parentNode.hidden=true">Close</button><p style="color:#fff">${esc(s.student_name)}</p>`+(data||[]).map(d=>`<img src="${d.signedUrl}">`).join('');m.hidden=false};
+ SUBS.map((s,i)=>{const g=GR[s.id];return`<tr class="${g&&g.confidence==='low'?'warn':''}"><td>${i+1}</td><td>${esc(s.student_name)}</td><td>${esc(s.section)}</td>${Q.map(q=>`<td>${g?g.scores[q.n]:''}</td>`).join('')}<td><b>${g?g.total:'–'}</b></td><td>${g?`<span class="tag">${esc(g.confidence)}</span>`:''}</td><td class="n">${g?esc(g.notes):''}</td><td><button class="s" onclick="view('${s.id}')">Photos</button>${g&&g.confidence!=='high'?` <button class="s" onclick="run(['${s.id}'],true)">Re-check</button>`:''}</td></tr>`}).join('')}
+window.view=async id=>{const s=SUBS.find(x=>x.id===id);const{data}=await B.createSignedUrls(s.files,3600);const m=$('modal');m.innerHTML=`<div style="max-width:780px;margin:0 auto"><div class="row" style="justify-content:space-between;color:#fff;margin-bottom:12px"><strong>${esc(s.student_name)}</strong><button class="p" style="width:auto" onclick="this.closest('#modal').hidden=true">Close</button></div>`+(data||[]).map(d=>`<img src="${d.signedUrl}" style="max-width:100%;display:block;margin:0 auto 12px;border-radius:12px">`).join('')+'</div>';m.hidden=false};
 async function run(ids,strong){if(busy)return;if(!EX)return alert('Save the exam first.');busy=true;let done=0;
  for(const id of ids){let ok=false;for(let t=0;t<3&&!ok;t++){$('st').textContent=`Grading ${done+1}/${ids.length}…${t?' (waiting for rate limit)':''}`;
   const{data,error}=await db.functions.invoke('grade',{body:{submission_id:id,exam_id:EX.id,strong:!!strong}});
